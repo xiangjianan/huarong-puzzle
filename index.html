@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>数字华容道</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  :root {
+    --bg: #0f0f1a;
+    --card: #1a1a2e;
+    --tile: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --tile-hover: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+    --accent: #f093fb;
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --radius: 12px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* 背景粒子 */
+  #bg-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+    width: 100%;
+    max-width: 480px;
+  }
+
+  h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea, #f093fb);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+  }
+
+  /* 难度选择 */
+  .difficulty-bar {
+    display: flex;
+    gap: 8px;
+  }
+  .diff-btn {
+    padding: 8px 20px;
+    border: 2px solid transparent;
+    border-radius: 20px;
+    background: var(--card);
+    color: var(--text-dim);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .diff-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(240, 147, 251, 0.3);
+  }
+  .diff-btn:hover { color: var(--text); }
+
+  /* 状态栏 */
+  .stats {
+    display: flex;
+    gap: 30px;
+    font-size: 1.1rem;
+  }
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .stat-label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .stat-value { font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* 棋盘 */
+  .board-wrapper {
+    position: relative;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .board {
+    position: relative;
+    /* 尺寸由 JS 动态设置 */
+  }
+
+  .tile {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
+    background: var(--tile);
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    transition: transform 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94), box-shadow 0.18s;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    will-change: transform;
+  }
+  .tile:hover {
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+  }
+  .tile:active {
+    transform: scale(0.95) !important;
+  }
+
+  /* 按钮 */
+  .btn-row {
+    display: flex;
+    gap: 12px;
+  }
+  .btn {
+    padding: 10px 28px;
+    border: none;
+    border-radius: 25px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+  }
+  .btn:active { transform: translateY(0); }
+
+  /* 胜利弹窗 */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--card);
+    border-radius: 20px;
+    padding: 40px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    animation: modalIn 0.4s ease;
+  }
+  @keyframes modalIn {
+    from { transform: scale(0.8); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .modal h2 {
+    font-size: 1.8rem;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .modal p { color: var(--text-dim); margin-bottom: 8px; font-size: 1.1rem; }
+  .modal .btn { margin-top: 20px; }
+
+  /* 庆祝粒子画布 */
+  #confetti-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 99;
+    pointer-events: none;
+  }
+
+  /* 响应式 */
+  @media (max-width: 400px) {
+    h1 { font-size: 1.5rem; }
+    .stats { gap: 20px; }
+    .stat-value { font-size: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<canvas id="confetti-canvas"></canvas>
+
+<div class="container">
+  <h1>🧩 数字华容道</h1>
+
+  <div class="difficulty-bar">
+    <button class="diff-btn" data-size="3">3×3</button>
+    <button class="diff-btn active" data-size="4">4×4</button>
+    <button class="diff-btn" data-size="5">5×5</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat-item">
+      <span class="stat-label">步数</span>
+      <span class="stat-value" id="moves">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">时间</span>
+      <span class="stat-value" id="timer">00:00</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">最佳</span>
+      <span class="stat-value" id="best">-</span>
+    </div>
+  </div>
+
+  <div class="board-wrapper">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn" id="shuffle-btn">🔀 打乱</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="win-modal">
+  <div class="modal">
+    <h2>🎉 恭喜通关！</h2>
+    <p id="win-moves"></p>
+    <p id="win-time"></p>
+    <button class="btn" id="play-again-btn">再来一局</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ====== 游戏状态 ======
+  let size = 4;
+  let tiles = [];        // 一维数组，0 代表空格
+  let moves = 0;
+  let timerInterval = null;
+  let startTime = 0;
+  let elapsed = 0;
+  let gameStarted = false;
+  let solved = false;
+
+  const board = document.getElementById('board');
+  const movesEl = document.getElementById('moves');
+  const timerEl = document.getElementById('timer');
+  const bestEl = document.getElementById('best');
+  const winModal = document.getElementById('win-modal');
+  const winMoves = document.getElementById('win-moves');
+  const winTime = document.getElementById('win-time');
+
+  // ====== 尺寸计算 ======
+  function getTileSize() {
+    const maxBoard = Math.min(window.innerWidth - 56, 400);
+    return Math.floor((maxBoard - (size + 1) * 6) / size);
+  }
+
+  function getBoardSize() {
+    const ts = getTileSize();
+    return ts * size + (size + 1) * 6;
+  }
+
+  // ====== 初始化棋盘 ======
+  function initBoard() {
+    const total = size * size;
+    tiles = Array.from({ length: total }, (_, i) => (i + 1) % total);
+    moves = 0;
+    elapsed = 0;
+    gameStarted = false;
+    solved = false;
+    clearInterval(timerInterval);
+    movesEl.textContent = '0';
+    timerEl.textContent = '00:00';
+    updateBest();
+    render();
+  }
+
+  // ====== 渲染 ======
+  function render() {
+    const ts = getTileSize();
+    const bs = getBoardSize();
+    board.style.width = bs + 'px';
+    board.style.height = bs + 'px';
+    board.innerHTML = '';
+
+    const fontSize = size <= 3 ? '1.6rem' : size === 4 ? '1.3rem' : '1.05rem';
+    const gap = 6;
+
+    tiles.forEach((val, idx) => {
+      if (val === 0) return;
+      const row = Math.floor(idx / size);
+      const col = idx % size;
+      const div = document.createElement('div');
+      div.className = 'tile';
+      div.textContent = val;
+      div.style.width = ts + 'px';
+      div.style.height = ts + 'px';
+      div.style.fontSize = fontSize;
+      div.style.transform = `translate(${col * (ts + gap) + gap}px, ${row * (ts + gap) + gap}px)`;
+      div.addEventListener('click', () => moveTile(idx));
+      board.appendChild(div);
+    });
+  }
+
+  // ====== 移动方块 ======
+  function moveTile(idx) {
+    if (solved) return;
+    const emptyIdx = tiles.indexOf(0);
+    const row = Math.floor(idx / size), col = idx % size;
+    const eRow = Math.floor(emptyIdx / size), eCol = emptyIdx % size;
+    const dist = Math.abs(row - eRow) + Math.abs(col - eCol);
+    if (dist !== 1) return;
+
+    [tiles[idx], tiles[emptyIdx]] = [tiles[emptyIdx], tiles[idx]];
+    moves++;
+    movesEl.textContent = moves;
+
+    if (!gameStarted) {
+      gameStarted = true;
+      startTime = Date.now();
+      timerInterval = setInterval(updateTimer, 100);
+    }
+
+    render();
+    if (checkWin()) onWin();
+  }
+
+  // ====== 胜利检测 ======
+  function checkWin() {
+    const total = size * size;
+    for (let i = 0; i < total - 1; i++) {
+      if (tiles[i] !== i + 1) return false;
+    }
+    return tiles[total - 1] === 0;
+  }
+
+  // ====== 胜利处理 ======
+  function onWin() {
+    solved = true;
+    clearInterval(timerInterval);
+    const timeStr = formatTime(elapsed);
+    winMoves.textContent = `步数：${moves} 步`;
+    winTime.textContent = `用时：${timeStr}`;
+    
+    // 保存最佳成绩
+    const key = `huarong_best_${size}`;
+    const prev = localStorage.getItem(key);
+    if (!prev || moves < parseInt(prev)) {
+      localStorage.setItem(key, moves);
+      updateBest();
+    }
+
+    setTimeout(() => {
+      winModal.classList.add('show');
+      launchConfetti();
+    }, 300);
+  }
+
+  // ====== 计时器 ======
+  function updateTimer() {
+    elapsed = Date.now() - startTime;
+    timerEl.textContent = formatTime(elapsed);
+  }
+
+  function formatTime(ms) {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function updateBest() {
+    const best = localStorage.getItem(`huarong_best_${size}`);
+    bestEl.textContent = best ? best + '步' : '-';
+  }
+
+  // ====== 打乱 ======
+  function shuffle() {
+    winModal.classList.remove('show');
+    const total = size * size;
+    tiles = Array.from({ length: total }, (_, i) => (i + 1) % total);
+    // 从完成状态反向随机走 N 步，保证可解
+    const shuffleMoves = size * size * 40;
+    let emptyIdx = total - 1;
+    for (let i = 0; i < shuffleMoves; i++) {
+      const neighbors = getNeighbors(emptyIdx);
+      const pick = neighbors[Math.floor(Math.random() * neighbors.length)];
+      [tiles[emptyIdx], tiles[pick]] = [tiles[pick], tiles[emptyIdx]];
+      emptyIdx = pick;
+    }
+    moves = 0;
+    elapsed = 0;
+    gameStarted = false;
+    solved = false;
+    clearInterval(timerInterval);
+    movesEl.textContent = '0';
+    timerEl.textContent = '00:00';
+    render();
+  }
+
+  function getNeighbors(idx) {
+    const row = Math.floor(idx / size), col = idx % size;
+    const n = [];
+    if (row > 0) n.push(idx - size);
+    if (row < size - 1) n.push(idx + size);
+    if (col > 0) n.push(idx - 1);
+    if (col < size - 1) n.push(idx + 1);
+    return n;
+  }
+
+  // ====== 触摸滑动支持 ======
+  let touchStartX, touchStartY;
+  board.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  board.addEventListener('touchend', e => {
+    if (solved) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+
+    const emptyIdx = tiles.indexOf(0);
+    const eRow = Math.floor(emptyIdx / size), eCol = emptyIdx % size;
+    let targetIdx = -1;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // 水平滑动：手指向右 → 空格左边的方块移过来
+      if (dx > 0 && eCol > 0) targetIdx = emptyIdx - 1;
+      else if (dx < 0 && eCol < size - 1) targetIdx = emptyIdx + 1;
+    } else {
+      if (dy > 0 && eRow > 0) targetIdx = emptyIdx - size;
+      else if (dy < 0 && eRow < size - 1) targetIdx = emptyIdx + size;
+    }
+    if (targetIdx >= 0) moveTile(targetIdx);
+  }, { passive: true });
+
+  // ====== 键盘支持 ======
+  document.addEventListener('keydown', e => {
+    if (solved) return;
+    const emptyIdx = tiles.indexOf(0);
+    const eRow = Math.floor(emptyIdx / size), eCol = emptyIdx % size;
+    let targetIdx = -1;
+    switch (e.key) {
+      case 'ArrowUp':    if (eRow < size - 1) targetIdx = emptyIdx + size; break;
+      case 'ArrowDown':  if (eRow > 0) targetIdx = emptyIdx - size; break;
+      case 'ArrowLeft':  if (eCol < size - 1) targetIdx = emptyIdx + 1; break;
+      case 'ArrowRight': if (eCol > 0) targetIdx = emptyIdx - 1; break;
+    }
+    if (targetIdx >= 0) { e.preventDefault(); moveTile(targetIdx); }
+  });
+
+  // ====== 难度切换 ======
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      size = parseInt(btn.dataset.size);
+      initBoard();
+      shuffle();
+    });
+  });
+
+  // ====== 按钮事件 ======
+  document.getElementById('shuffle-btn').addEventListener('click', shuffle);
+  document.getElementById('play-again-btn').addEventListener('click', () => {
+    winModal.classList.remove('show');
+    shuffle();
+  });
+
+  // ====== 窗口大小变化 ======
+  window.addEventListener('resize', () => { if (!solved) render(); });
+
+  // ====== 背景粒子 ======
+  function initBgParticles() {
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+    let w, h, particles = [];
+
+    function resize() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    for (let i = 0; i < 50; i++) {
+      particles.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        r: Math.random() * 2 + 0.5,
+        dx: (Math.random() - 0.5) * 0.3,
+        dy: (Math.random() - 0.5) * 0.3,
+        a: Math.random() * 0.3 + 0.1,
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+      particles.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(102, 126, 234, ${p.a})`;
+        ctx.fill();
+        p.x += p.dx; p.y += p.dy;
+        if (p.x < 0) p.x = w;
+        if (p.x > w) p.x = 0;
+        if (p.y < 0) p.y = h;
+        if (p.y > h) p.y = 0;
+      });
+      requestAnimationFrame(draw);
+    }
+    draw();
+  }
+
+  // ====== 庆祝烟花 ======
+  function launchConfetti() {
+    const canvas = document.getElementById('confetti-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const particles = [];
+    const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#ffd700', '#4facfe', '#00f2fe'];
+
+    for (let i = 0; i < 150; i++) {
+      particles.push({
+        x: canvas.width / 2 + (Math.random() - 0.5) * 200,
+        y: canvas.height / 2,
+        vx: (Math.random() - 0.5) * 15,
+        vy: (Math.random() - 1) * 15 - 5,
+        r: Math.random() * 6 + 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        a: 1,
+        decay: Math.random() * 0.015 + 0.005,
+        gravity: 0.15,
+      });
+    }
+
+    let frame = 0;
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
+      particles.forEach(p => {
+        if (p.a <= 0) return;
+        alive = true;
+        ctx.globalAlpha = p.a;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.gravity;
+        p.a -= p.decay;
+      });
+      ctx.globalAlpha = 1;
+      frame++;
+      if (alive && frame < 300) requestAnimationFrame(draw);
+      else ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    draw();
+  }
+
+  // ====== 启动 ======
+  initBgParticles();
+  initBoard();
+  shuffle();
+})();
+</script>
+</body>
+</html>
