@@ -335,10 +335,24 @@
     const emptyIdx = tiles.indexOf(0);
     const row = Math.floor(idx / size), col = idx % size;
     const eRow = Math.floor(emptyIdx / size), eCol = emptyIdx % size;
-    const dist = Math.abs(row - eRow) + Math.abs(col - eCol);
-    if (dist !== 1) return;
 
-    [tiles[idx], tiles[emptyIdx]] = [tiles[emptyIdx], tiles[idx]];
+    // 只允许同行或同列的方块滑动
+    if (row !== eRow && col !== eCol) return;
+    if (row === eRow && col === eCol) return;
+
+    // 将空格和目标之间的所有方块滑动一格
+    if (row === eRow) {
+      const step = col > eCol ? 1 : -1;
+      for (let c = eCol; c !== col; c += step) {
+        [tiles[row * size + c], tiles[row * size + c + step]] = [tiles[row * size + c + step], tiles[row * size + c]];
+ }
+    } else {
+      const step = row > eRow ? 1 : -1;
+      for (let r = eRow; r !== row; r += step) {
+        [tiles[r * size + col], tiles[(r + step) * size + col]] = [tiles[(r + step) * size + col], tiles[r * size + col]];
+      }
+    }
+
     moves++;
     movesEl.textContent = moves;
 
